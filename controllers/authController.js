@@ -16,7 +16,8 @@ const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 
 // POST /api/auth/register
 const register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, password } = req.body;
+  const email = req.body.email?.toLowerCase().trim();
 
   if (!name || !email || !password)
     return res.status(400).json({ error: 'Name, email and password are required' });
@@ -62,7 +63,8 @@ const register = async (req, res) => {
 
 // POST /api/auth/verify-otp
 const verifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  const { otp } = req.body;
+  const email = req.body.email?.toLowerCase().trim();
 
   if (!email || !otp)
     return res.status(400).json({ error: 'Email and OTP are required' });
@@ -97,7 +99,7 @@ const verifyOtp = async (req, res) => {
 
 // POST /api/auth/resend-otp
 const resendOtp = async (req, res) => {
-  const { email } = req.body;
+  const email = req.body.email?.toLowerCase().trim();
 
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
@@ -126,7 +128,8 @@ const resendOtp = async (req, res) => {
 
 // POST /api/auth/login
 const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  const email = req.body.email?.toLowerCase().trim();
 
   if (!email || !password)
     return res.status(400).json({ error: 'Email and password are required' });
