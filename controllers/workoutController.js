@@ -20,6 +20,25 @@ const startWorkout = async (req, res) => {
 // GET /api/workouts — workout history
 const getWorkouts = async (req, res) => {
   try {
+    // Auto-complete abandoned workouts (started >3h ago, has sets, still incomplete)
+    await pool.query(
+      `UPDATE workouts SET completed_at = started_at + INTERVAL '1 hour'
+       WHERE user_id = $1
+         AND completed_at IS NULL
+         AND started_at < NOW() - INTERVAL '3 hours'
+         AND id IN (SELECT DISTINCT workout_id FROM sets WHERE workout_id = workouts.id)`,
+      [req.user.id]
+    );
+    // Silently discard abandoned workouts with no sets
+    await pool.query(
+      `DELETE FROM workouts
+       WHERE user_id = $1
+         AND completed_at IS NULL
+         AND started_at < NOW() - INTERVAL '3 hours'
+         AND id NOT IN (SELECT DISTINCT workout_id FROM sets)`,
+      [req.user.id]
+    );
+
     const result = await pool.query(
       `SELECT w.*,
         COUNT(DISTINCT s.exercise_id) AS exercise_count,
@@ -76,7 +95,30 @@ const getActiveWorkout = async (req, res) => {
       });
     }
 
-    res.json({ workout: { ...workout, exercises: Object.values(exerciseMap) } });
+    const exercises = Object.values(exerciseMap);
+
+    // Fetch previous best (last session weight+reps) for each exercise
+    const exerciseIds = exercises.map(e => e.exercise_id);
+    let previousBest = {};
+    if (exerciseIds.length > 0) {
+      const pbRes = await pool.query(
+        `SELECT DISTINCT ON (s.exercise_id)
+           s.exercise_id, s.weight_kg, s.reps
+         FROM sets s
+         JOIN workouts w ON w.id = s.workout_id
+         WHERE s.exercise_id = ANY($1)
+           AND w.user_id = $2
+           AND w.completed_at IS NOT NULL
+           AND s.workout_id != $3
+         ORDER BY s.exercise_id, w.completed_at DESC, s.set_number DESC`,
+        [exerciseIds, req.user.id, workout.id]
+      );
+      for (const row of pbRes.rows) {
+        previousBest[row.exercise_id] = { weight_kg: row.weight_kg, reps: row.reps };
+      }
+    }
+
+    res.json({ workout: { ...workout, exercises }, previousBest });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -263,4 +305,35 @@ const deleteWorkout = async (req, res) => {
   }
 };
 
-module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, deleteSet, completeWorkout, deleteWorkout };
+// POST /api/workouts/from-template/:templateId
+const startFromTemplate = async (req, res) => {
+  const { templateId } = req.params;
+  try {
+    const tmpl = await pool.query(
+      'SELECT * FROM workout_templates WHERE id = $1 AND user_id = $2',
+      [templateId, req.user.id]
+    );
+    if (!tmpl.rows[0]) return res.status(404).json({ error: 'Template not found' });
+
+    const workout = await pool.query(
+      'INSERT INTO workouts (user_id, name) VALUES ($1, $2) RETURNING *',
+      [req.user.id, req.body.name || tmpl.rows[0].name]
+    );
+
+    const exercises = await pool.query(
+      `SELECT te.exercise_id, e.name AS exercise_name, e.muscle_group
+       FROM template_exercises te
+       JOIN exercises e ON e.id = te.exercise_id
+       WHERE te.template_id = $1
+       ORDER BY te.order_index`,
+      [templateId]
+    );
+
+    res.status(201).json({ workout: { ...workout.rows[0], exercises: [] }, templateExercises: exercises.rows });
+  } catch (err) {
+    console.error('Start from template error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate };

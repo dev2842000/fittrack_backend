@@ -33,6 +33,7 @@ app.use('/api/workouts', require('./routes/workouts'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/goals', require('./routes/goals'));
+app.use('/api/templates', require('./routes/templates'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/push', require('./routes/push'));
 
