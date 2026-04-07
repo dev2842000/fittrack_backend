@@ -212,6 +212,25 @@ const logSet = async (req, res) => {
   }
 };
 
+// PATCH /api/workouts/:id/sets/:setId — edit a set inline
+const editSet = async (req, res) => {
+  const { weight_kg, reps } = req.body;
+  if (!reps) return res.status(400).json({ error: 'reps is required' });
+  try {
+    const result = await pool.query(
+      `UPDATE sets SET weight_kg=$1, reps=$2
+       WHERE id=$3 AND workout_id IN (SELECT id FROM workouts WHERE user_id=$4)
+       RETURNING *`,
+      [weight_kg ?? null, reps, req.params.setId, req.user.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Set not found' });
+    res.json({ set: result.rows[0] });
+  } catch (err) {
+    console.error('Edit set error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 // DELETE /api/workouts/:id/sets/:setId — remove a set
 const deleteSet = async (req, res) => {
   try {
@@ -359,7 +378,7 @@ const startFromTemplate = async (req, res) => {
 
     const workout = await pool.query(
       'INSERT INTO workouts (user_id, name) VALUES ($1, $2) RETURNING *',
-      [req.user.id, req.body.name || tmpl.rows[0].name]
+      [req.user.id, req.body?.name || tmpl.rows[0].name]
     );
 
     const exercises = await pool.query(
@@ -378,4 +397,4 @@ const startFromTemplate = async (req, res) => {
   }
 };
 
-module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate, getPreviousBest };
+module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, editSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate, getPreviousBest };

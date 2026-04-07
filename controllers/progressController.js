@@ -323,4 +323,31 @@ const getStreaks = async (req, res) => {
   }
 };
 
-module.exports = { getSummary, getLoggedExercises, getExerciseProgress, getAllPRs, logBodyweight, getBodyweight, getMonthly, getMonthsSummary, getStreaks };
+// GET /api/progress/weekly-muscles
+const getWeeklyMuscles = async (req, res) => {
+  try {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    monday.setHours(0, 0, 0, 0);
+
+    const result = await pool.query(
+      `SELECT e.muscle_group, COUNT(DISTINCT s.workout_id)::int AS sessions
+       FROM sets s
+       JOIN exercises e ON e.id = s.exercise_id
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE w.user_id = $1 AND w.completed_at >= $2
+       GROUP BY e.muscle_group
+       ORDER BY sessions DESC`,
+      [req.user.id, monday.toISOString()]
+    );
+
+    res.json({ muscles: result.rows });
+  } catch (err) {
+    console.error('Weekly muscles error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { getSummary, getLoggedExercises, getExerciseProgress, getAllPRs, logBodyweight, getBodyweight, getMonthly, getMonthsSummary, getStreaks, getWeeklyMuscles };
