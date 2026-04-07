@@ -6,6 +6,13 @@ const { sendPushToUser } = require('../lib/pushService');
 const startWorkout = async (req, res) => {
   const { name } = req.body;
   try {
+    const existing = await pool.query(
+      `SELECT id FROM workouts WHERE user_id = $1 AND completed_at IS NULL LIMIT 1`,
+      [req.user.id]
+    );
+    if (existing.rows[0]) {
+      return res.status(409).json({ error: 'You already have an active workout. Finish or discard it first.' });
+    }
     const result = await pool.query(
       `INSERT INTO workouts (user_id, name) VALUES ($1, $2) RETURNING *`,
       [req.user.id, name || null]
@@ -292,6 +299,34 @@ async function checkAndNotify(userId) {
   }
 }
 
+// GET /api/workouts/previous-best?exerciseIds=1,2,3
+const getPreviousBest = async (req, res) => {
+  try {
+    const ids = (req.query.exerciseIds || '').split(',').map(Number).filter(Boolean);
+    if (!ids.length) return res.json({ previousBest: {} });
+
+    const pbRes = await pool.query(
+      `SELECT DISTINCT ON (s.exercise_id)
+         s.exercise_id, s.weight_kg, s.reps
+       FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       WHERE s.exercise_id = ANY($1)
+         AND w.user_id = $2
+         AND w.completed_at IS NOT NULL
+       ORDER BY s.exercise_id, w.completed_at DESC, s.set_number DESC`,
+      [ids, req.user.id]
+    );
+
+    const previousBest = {};
+    for (const row of pbRes.rows) {
+      previousBest[row.exercise_id] = { weight_kg: row.weight_kg, reps: row.reps };
+    }
+    res.json({ previousBest });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 // DELETE /api/workouts/:id — discard a workout
 const deleteWorkout = async (req, res) => {
   try {
@@ -309,6 +344,13 @@ const deleteWorkout = async (req, res) => {
 const startFromTemplate = async (req, res) => {
   const { templateId } = req.params;
   try {
+    const existing = await pool.query(
+      `SELECT id FROM workouts WHERE user_id = $1 AND completed_at IS NULL LIMIT 1`,
+      [req.user.id]
+    );
+    if (existing.rows[0]) {
+      return res.status(409).json({ error: 'You already have an active workout. Finish or discard it first.' });
+    }
     const tmpl = await pool.query(
       'SELECT * FROM workout_templates WHERE id = $1 AND user_id = $2',
       [templateId, req.user.id]
@@ -336,4 +378,4 @@ const startFromTemplate = async (req, res) => {
   }
 };
 
-module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate };
+module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate, getPreviousBest };

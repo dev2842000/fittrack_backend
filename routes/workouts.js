@@ -9,6 +9,7 @@ const { protect } = require('../middleware/auth');
 router.use(protect);
 
 router.get('/active', getActiveWorkout);
+router.get('/previous-best', require('../controllers/workoutController').getPreviousBest);
 router.get('/', getWorkouts);
 router.post('/', startWorkout);
 router.post('/from-template/:templateId', startFromTemplate);
