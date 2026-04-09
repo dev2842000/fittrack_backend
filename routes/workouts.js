@@ -11,6 +11,8 @@ router.use(protect);
 
 router.get('/active', getActiveWorkout);
 router.get('/previous-best', require('../controllers/workoutController').getPreviousBest);
+router.get('/export', exportWorkouts);
+router.get('/dates', getWorkoutDates);
 router.get('/', getWorkouts);
 router.post('/', startWorkout);
 router.post('/from-template/:templateId', startFromTemplate);
@@ -21,7 +23,5 @@ router.patch('/:id/sets/:setId', editSet);
 router.delete('/:id/sets/:setId', deleteSet);
 router.patch('/:id/complete', completeWorkout);
 router.patch('/:id/notes', updateNotes);
-router.get('/export', exportWorkouts);
-router.get('/dates', getWorkoutDates);
 
 module.exports = router;
