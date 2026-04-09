@@ -350,4 +350,48 @@ const getWeeklyMuscles = async (req, res) => {
   }
 };
 
-module.exports = { getSummary, getLoggedExercises, getExerciseProgress, getAllPRs, logBodyweight, getBodyweight, getMonthly, getMonthsSummary, getStreaks, getWeeklyMuscles };
+// GET /api/progress/muscle-volume?period=week|month
+const getMuscleVolume = async (req, res) => {
+  const { period = 'month' } = req.query;
+  try {
+    let dateFilter;
+    if (period === 'week') {
+      const now = new Date();
+      const day = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      monday.setHours(0, 0, 0, 0);
+      dateFilter = monday.toISOString();
+    } else {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      dateFilter = d.toISOString();
+    }
+
+    const result = await pool.query(
+      `SELECT e.muscle_group,
+              COUNT(s.id)::int AS total_sets,
+              COALESCE(SUM(s.weight_kg * s.reps), 0)::numeric AS total_volume
+       FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       JOIN exercises e ON e.id = s.exercise_id
+       WHERE w.user_id = $1 AND w.completed_at IS NOT NULL AND w.completed_at >= $2
+       GROUP BY e.muscle_group
+       ORDER BY total_sets DESC`,
+      [req.user.id, dateFilter]
+    );
+    res.json({
+      data: result.rows.map(r => ({
+        muscle_group: r.muscle_group,
+        total_sets: r.total_sets,
+        total_volume: Math.round(parseFloat(r.total_volume)),
+      })),
+      period,
+    });
+  } catch (err) {
+    console.error('Muscle volume error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { getSummary, getLoggedExercises, getExerciseProgress, getAllPRs, logBodyweight, getBodyweight, getMonthly, getMonthsSummary, getStreaks, getWeeklyMuscles, getMuscleVolume };

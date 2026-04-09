@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   startWorkout, getWorkouts, getActiveWorkout, getWorkout,
   logSet, editSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate,
+  updateNotes, exportWorkouts, getWorkoutDates,
 } = require('../controllers/workoutController');
 const { protect } = require('../middleware/auth');
 
@@ -19,5 +20,8 @@ router.post('/:id/sets', logSet);
 router.patch('/:id/sets/:setId', editSet);
 router.delete('/:id/sets/:setId', deleteSet);
 router.patch('/:id/complete', completeWorkout);
+router.patch('/:id/notes', updateNotes);
+router.get('/export', exportWorkouts);
+router.get('/dates', getWorkoutDates);
 
 module.exports = router;

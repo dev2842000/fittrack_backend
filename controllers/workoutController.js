@@ -397,4 +397,83 @@ const startFromTemplate = async (req, res) => {
   }
 };
 
-module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, editSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate, getPreviousBest };
+// PATCH /api/workouts/:id/notes
+const updateNotes = async (req, res) => {
+  const { notes } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE workouts SET notes = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+      [notes || null, req.params.id, req.user.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Workout not found' });
+    res.json({ workout: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// GET /api/workouts/export — download all workout data as CSV
+const exportWorkouts = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         DATE(w.completed_at) AS date,
+         COALESCE(w.name, 'Workout') AS workout_name,
+         w.notes,
+         e.name AS exercise,
+         e.muscle_group,
+         s.set_number,
+         s.weight_kg,
+         s.reps
+       FROM sets s
+       JOIN workouts w ON w.id = s.workout_id
+       JOIN exercises e ON e.id = s.exercise_id
+       WHERE w.user_id = $1 AND w.completed_at IS NOT NULL
+       ORDER BY w.completed_at DESC, s.exercise_id, s.set_number`,
+      [req.user.id]
+    );
+
+    const rows = result.rows;
+    const header = 'Date,Workout,Notes,Exercise,Muscle Group,Set,Weight (kg),Reps\n';
+    const csv = rows.map(r => [
+      r.date,
+      `"${(r.workout_name || '').replace(/"/g, '""')}"`,
+      `"${(r.notes || '').replace(/"/g, '""')}"`,
+      `"${r.exercise.replace(/"/g, '""')}"`,
+      r.muscle_group,
+      r.set_number,
+      r.weight_kg ?? '',
+      r.reps,
+    ].join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="fittrack-export.csv"');
+    res.send(header + csv);
+  } catch (err) {
+    console.error('Export error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// GET /api/progress/workout-dates?year=2026
+const getWorkoutDates = async (req, res) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  try {
+    const result = await pool.query(
+      `SELECT DATE(completed_at) AS date, COUNT(*) AS count
+       FROM workouts
+       WHERE user_id = $1
+         AND completed_at IS NOT NULL
+         AND EXTRACT(YEAR FROM completed_at) = $2
+       GROUP BY DATE(completed_at)`,
+      [req.user.id, year]
+    );
+    const map = {};
+    result.rows.forEach(r => { map[r.date] = parseInt(r.count); });
+    res.json({ year, dates: map });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { startWorkout, getWorkouts, getActiveWorkout, getWorkout, logSet, editSet, deleteSet, completeWorkout, deleteWorkout, startFromTemplate, getPreviousBest, updateNotes, exportWorkouts, getWorkoutDates };

@@ -36,6 +36,7 @@ app.use('/api/goals', require('./routes/goals'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/push', require('./routes/push'));
+app.use('/api/measurements', require('./routes/measurements'));
 
 // 404 handler
 app.use((req, res) => {

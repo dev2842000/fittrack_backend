@@ -97,6 +97,53 @@ const saveWorkoutAsTemplate = async (req, res) => {
   }
 };
 
+// PUT /api/templates/:id  { name, exercise_ids }
+const updateTemplate = async (req, res) => {
+  const { name, exercise_ids } = req.body;
+  if (!name || !exercise_ids?.length)
+    return res.status(400).json({ error: 'name and exercise_ids are required' });
+  try {
+    const check = await pool.query('SELECT id FROM workout_templates WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!check.rows[0]) return res.status(404).json({ error: 'Template not found' });
+
+    await pool.query('UPDATE workout_templates SET name=$1 WHERE id=$2', [name, req.params.id]);
+    await pool.query('DELETE FROM template_exercises WHERE template_id=$1', [req.params.id]);
+    for (let i = 0; i < exercise_ids.length; i++) {
+      await pool.query(
+        'INSERT INTO template_exercises (template_id, exercise_id, order_index) VALUES ($1,$2,$3)',
+        [req.params.id, exercise_ids[i], i]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update template error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/templates/:id/duplicate
+const duplicateTemplate = async (req, res) => {
+  try {
+    const src = await pool.query('SELECT * FROM workout_templates WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!src.rows[0]) return res.status(404).json({ error: 'Template not found' });
+
+    const newT = await pool.query(
+      'INSERT INTO workout_templates (user_id, name) VALUES ($1,$2) RETURNING *',
+      [req.user.id, src.rows[0].name + ' (copy)']
+    );
+    const exercises = await pool.query('SELECT * FROM template_exercises WHERE template_id=$1 ORDER BY order_index', [req.params.id]);
+    for (const ex of exercises.rows) {
+      await pool.query(
+        'INSERT INTO template_exercises (template_id, exercise_id, order_index) VALUES ($1,$2,$3)',
+        [newT.rows[0].id, ex.exercise_id, ex.order_index]
+      );
+    }
+    res.status(201).json({ template: newT.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 // DELETE /api/templates/:id
 const deleteTemplate = async (req, res) => {
   try {
@@ -107,4 +154,4 @@ const deleteTemplate = async (req, res) => {
   }
 };
 
-module.exports = { getTemplates, getTemplateExercises, createTemplate, saveWorkoutAsTemplate, deleteTemplate };
+module.exports = { getTemplates, getTemplateExercises, createTemplate, saveWorkoutAsTemplate, updateTemplate, duplicateTemplate, deleteTemplate };
