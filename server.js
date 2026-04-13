@@ -51,7 +51,19 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`FitTrack API running on port ${PORT}`);
+  startSelfPing();
 });
+
+async function startSelfPing() {
+  const url = `http://localhost:${PORT}/api/health`;
+  setInterval(async () => {
+    try {
+      await fetch(url);
+    } catch (err) {
+      console.error('[KeepAlive] ping failed:', err.message);
+    }
+  }, 5000);
+}
 
 // Start background jobs
 require('./lib/weeklyEmail').startWeeklyEmailJob();
